@@ -134,16 +134,18 @@ DO NOT create, derive, or reference any columns not in this list.
 DO NOT use generic table names like 'data' - use the exact table name provided.
 DO NOT create column aliases that reference non-existent columns.
 
-Column Name Mappings:
-- "model" or "model line" or "vehicle model" → mdl_ln_cd
-- "forecast" or "predicted" or "prediction" → forecast
-- "actual" or "real sales" or "observed" → actual
-- "dealer" or "dealership" → dlr_nb
-- "trim" → trm_cd
-- "drivetrain" or "drive type" → drv_trn_cd
-- "quality" or "data quality" → thin_history
-- "year" or "model year" → full_mdl_yr_3_cd
-- "date" or "created" or "timestamp" → created_at
+COMPREHENSIVE COLUMN NAME MAPPINGS (Match ANY of these variations):
+- "model" or "model line" or "model code" or "mdl" or "vehicle model" → mdl_ln_cd
+- "forecast" or "predicted" or "prediction" or "predicted demand" → forecast
+- "actual" or "real sales" or "observed" or "real demand" or "sales" → actual
+- "dealer" or "dealership" or "dlr" → dlr_nb
+- "trim" or "trim code" or "trim level" or "package" → trm_cd
+- "drivetrain" or "drive type" or "transmission" or "drv" or "drive train" → drv_trn_cd
+- "quality" or "data quality" or "history" or "historical data" or "thin" → thin_history
+- "year" or "model year" or "year code" or "production year" or "mdl year" → full_mdl_yr_3_cd
+- "date" or "created" or "timestamp" or "creation date" or "when" → created_at
+- "run" or "run id" or "execution" or "model run" → run_id
+- "reason" or "explanation" or "note" or "comment" → reason
 
 EXAMPLE TRANSFORMATIONS:
 - User: "Top 3 models by forecast" 
@@ -154,6 +156,9 @@ EXAMPLE TRANSFORMATIONS:
 
 - User: "Configurations with actual > forecast"
   SQL: SELECT * FROM {table_name} WHERE actual > forecast LIMIT 100
+
+- User: "What's the average forecast for each trim code?"
+  SQL: SELECT trm_cd, AVG(forecast) as avg_forecast FROM {table_name} GROUP BY trm_cd ORDER BY avg_forecast DESC
 
 Generate a SQL query to answer: {question}
 
@@ -238,9 +243,11 @@ RESPONSE GUIDELINES:
 5. Instead of "actual", say "Actual Sales" or "Observed Demand"
 6. Instead of "thin_history=1", say "Limited Historical Data"
 7. Instead of "thin_history=0", say "Reliable Historical Data"
-8. Round numbers to 2 decimal places for readability
-9. ONLY provide insights based on the actual data returned
-10. CITE specific values from the results
+8. Instead of "trm_cd", say "Trim" or "Trim Level"
+9. Instead of "drv_trn_cd", say "Drivetrain" or "Drive Type"
+10. Round numbers to 2 decimal places for readability
+11. ONLY provide insights based on the actual data returned
+12. CITE specific values from the results
 
 CRITICAL: If the question asks for information not present in the results, 
 clearly state "This information is not available in the current dataset."
