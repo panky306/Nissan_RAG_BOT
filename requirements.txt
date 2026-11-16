@@ -1,0 +1,7 @@
+streamlit==1.40.1
+duckdb==1.0.0
+openai==1.57.0
+pandas==2.2.0
+pyarrow==16.0.0
+# Removed: python-dotenv (use st.secrets for Streamlit Cloud)
+# Removed: pytz (unused)
