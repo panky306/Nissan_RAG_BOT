@@ -18,6 +18,9 @@ def validate_sql_columns(sql: str, available_columns: set) -> Dict[str, Any]:
     """
     Validate that SQL query only references available columns.
     
+    This validator extracts column references BEFORE aliases (after 'AS').
+    So it won't flag output aliases like 'SUM(forecast) as avg_forecast'.
+    
     Args:
         sql: SQL query string to validate
         available_columns: Set of allowed column names
@@ -36,8 +39,16 @@ def validate_sql_columns(sql: str, available_columns: set) -> Dict[str, Any]:
             "error_message": "SQL query is empty"
         }
     
+    # Remove aliases (text after 'AS') to avoid flagging them as invalid columns
+    # Pattern: " AS alias_name" anywhere in the query
+    sql_without_aliases = re.sub(r'\s+AS\s+\w+', '', sql, flags=re.IGNORECASE)
+    
+    # Also handle string literals to avoid extracting words from within strings
+    # Remove anything in single quotes
+    sql_cleaned = re.sub(r"'[^']*'", "''", sql_without_aliases)
+    
     # Extract all identifiers from SQL using regex: \b([a-zA-Z_][a-zA-Z0-9_]*)\b
-    identifiers = re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', sql)
+    identifiers = re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', sql_cleaned)
     
     # Filter out SQL keywords and function names (case-insensitive)
     potential_columns = [

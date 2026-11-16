@@ -1,4 +1,4 @@
-"""Main Streamlit application for RAG chatbot."""
+﻿"""Main Streamlit application for RAG chatbot."""
 import streamlit as st
 import tempfile
 import os
@@ -11,8 +11,7 @@ from src.rag_pipeline import RAGPipeline
 # Note: API key is loaded from:
 # - Streamlit Secrets (Settings → Secrets on Streamlit Cloud)
 # - Environment variables (OPENAI_API_KEY)
-# - .env file (local development)
-# via load_environment() in src/utils.py
+# - .env file (local development) - searches Chat_Bot root and Nissan_RAG_BOT dirs
 
 
 def initialize_session_state():
@@ -20,18 +19,39 @@ def initialize_session_state():
     if "rag_pipeline" not in st.session_state:
         try:
             env = load_environment()
-            llm = LLMHandler(api_key=env["api_key"], model=env["model"])
-            st.session_state.rag_pipeline = RAGPipeline(llm)
+            # Verify API key is loaded
+            if not env.get("api_key"):
+                raise ValueError("API key is empty")
+            
+            st.session_state.rag_pipeline = RAGPipeline(LLMHandler(api_key=env["api_key"], model=env["model"]))
             st.session_state.chat_history = []
             st.session_state.data_loaded = False
             st.session_state.current_file = None
+            st.session_state.env_loaded = True
+            
+            # Debug info
+            st.session_state.config_info = {
+                "model": env["model"],
+                "source": env.get("source", "Unknown"),
+                "api_key_status": "✅ Loaded"
+            }
+            
         except ValueError as e:
+            st.session_state.env_loaded = False
             st.error(f"⚠️ Configuration Error: {str(e)}")
             st.info(
-                "**For Streamlit Cloud:** Add your OpenAI API key via "
-                "Settings → Secrets and restart the app.\n\n"
-                "**For Local Development:** Create `.streamlit/secrets.toml` "
-                "with your API key."
+                "**For Streamlit Cloud Deployment:** \n"
+                "1. Go to app settings → Secrets\n"
+                "2. Add your OpenAI API key:\n"
+                "   ```\n"
+                "   openai_api_key = \"sk-...\"\n"
+                "   openai_model = \"gpt-4o-mini\"\n"
+                "   ```\n"
+                "3. Restart the app\n\n"
+                "**For Local Development:** \n"
+                "1. Create `.env` file in Chat_Bot root directory\n"
+                "2. Add: `OPENAI_API_KEY=sk-...`\n"
+                "3. Restart Streamlit"
             )
             st.stop()
 
@@ -39,6 +59,14 @@ def initialize_session_state():
 def display_sidebar():
     """Display sidebar with controls."""
     st.sidebar.title("📊 Data Upload")
+    
+    # Show config status
+    if st.session_state.get("env_loaded"):
+        st.sidebar.success("✅ Config Loaded")
+        with st.sidebar.expander("⚙️ Configuration"):
+            st.write(f"**Model:** {st.session_state.config_info['model']}")
+            st.write(f"**Source:** {st.session_state.config_info['source']}")
+            st.write(f"**API Key:** {st.session_state.config_info['api_key_status']}")
     
     uploaded_file = st.sidebar.file_uploader(
         "Upload a data file (Parquet, JSON, or CSV)",
@@ -75,7 +103,7 @@ def display_sidebar():
                         st.sidebar.text(col)
                 
                 with st.sidebar.expander("Sample Data"):
-                    st.sidebar.dataframe(table_info["sample_data"], width='stretch')
+                    st.sidebar.dataframe(table_info["sample_data"], use_container_width=True)
         else:
             st.sidebar.error("Failed to load file")
 
@@ -91,6 +119,16 @@ def display_main_content():
     # Check if data is loaded
     if not st.session_state.data_loaded:
         st.info("👈 Upload a data file in the sidebar to get started!")
+        
+        # Show suggested questions
+        st.subheader("💡 Example Questions (after loading data):")
+        st.markdown("""
+        - What are the top 3 models ordered by forecast value?
+        - What's the average forecast for each trim code?
+        - Which drivetrain has the highest predicted demand?
+        - Show me sales by model year
+        - Average actual sales by dealership
+        """)
         return
     
     # Display current file
@@ -139,7 +177,7 @@ def display_main_content():
                 st.code(result["sql_query"], language="sql")
                 
                 st.subheader("Query Results")
-                st.dataframe(result["query_results"], width='stretch')
+                st.dataframe(result["query_results"], use_container_width=True)
                 st.caption(f"Returned {result['row_count']} rows")
         
         # Add assistant message to history
@@ -157,7 +195,7 @@ def display_footer():
     with col1:
         st.caption("🚀 Powered by Streamlit + DuckDB")
     with col2:
-        st.caption("🤖 LLM: OpenAI")
+        st.caption("🤖 LLM: OpenAI gpt-4o-mini")
     with col3:
         st.caption("⚡ Local, Private, Fast")
 
