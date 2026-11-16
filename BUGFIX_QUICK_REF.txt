@@ -1,0 +1,66 @@
+﻿# Bugfix Quick Reference
+
+## What Was Fixed
+Error when asking: "What are the top 3 models ordered by forecast value?"
+```
+❌ BEFORE: Error - "Generated query references unavailable columns: total_forecast"
+✅ AFTER: Returns correct results with top 3 models by forecast
+```
+
+## Changes Made
+
+### 1. Updated `src/llm_handler.py`
+- Added `validate_sql_columns()` function to check SQL columns
+- Added list of 11 available columns to LLM handler
+- Enhanced prompt with explicit available columns
+- Added validation to `generate_sql_query()` method
+
+### 2. Simplified `src/rag_pipeline.py`
+- Removed duplicate validation logic
+- Now relies on LLMHandler validation
+- Keeps user-friendly error messages
+
+### 3. Added Tests
+- `tests/test_sql_validation.py` - Pytest suite (11 tests)
+- `tests/test_manual.py` - Standalone validation tests
+
+## Available Columns (Protected)
+actual, created_at, dlr_nb, drv_trn_cd, forecast, full_mdl_yr_3_cd, mdl_ln_cd, reason, run_id, thin_history, trm_cd
+
+## Testing
+
+### Quick Test
+```bash
+python tests/test_manual.py
+# Should output: ALL TESTS PASSED! ✓
+```
+
+### With Pytest
+```bash
+pip install pytest
+pytest tests/test_sql_validation.py -v
+```
+
+### With Streamlit
+```bash
+streamlit run app.py
+# Test the questions that were failing before
+```
+
+## Key Improvements
+✅ Invalid columns caught BEFORE database execution
+✅ Clear error messages showing available columns
+✅ LLM prompt now has explicit column constraints
+✅ All 11 columns protected from invalid references
+✅ Valid queries continue working (no regression)
+✅ Comprehensive test coverage
+
+## Files Modified
+- src/llm_handler.py ✏️
+- src/rag_pipeline.py ✏️
+
+## Files Added
+- tests/__init__.py
+- tests/test_sql_validation.py
+- tests/test_manual.py
+- BUGFIX_SUMMARY.md

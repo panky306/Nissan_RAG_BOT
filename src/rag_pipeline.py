@@ -1,4 +1,4 @@
-"""RAG pipeline orchestration."""
+﻿"""RAG pipeline orchestration."""
 import re
 from typing import Optional, Dict, Any, Tuple
 from .duckdb_handler import DuckDBHandler
@@ -85,33 +85,8 @@ Sample data:
             if not sql_query:
                 return {
                     "error": "Unable to map your question to available data columns. "
-                             "Please check that the information you're asking about exists in your dataset."
-                }
-            
-            # ANTI-HALLUCINATION: Validate generated SQL uses only available columns
-            available_columns = set(self.duckdb.get_column_names(self.current_table))
-            sql_upper = sql_query.upper()
-            
-            # Extract column names from SQL (simplified check)
-            import re
-            # Look for column references like WHERE col = or SELECT col
-            potential_cols = re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', sql_query)
-            
-            sql_keywords = {'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'ORDER', 'BY', 'GROUP', 
-                           'HAVING', 'LIMIT', 'AS', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 
-                           'ROUND', 'ABS', 'NULL', 'NOT', 'IN', 'LIKE', 'BETWEEN', 'CASE', 
-                           'WHEN', 'THEN', 'ELSE', 'END', 'DISTINCT', 'DESC', 'ASC', 'JOIN',
-                           'LEFT', 'RIGHT', 'INNER', 'OUTER', 'ON', 'CROSS', 'UNION', 'ALL'}
-            
-            unrecognized_cols = [col for col in potential_cols 
-                                if col.upper() not in sql_keywords 
-                                and col not in available_columns]
-            
-            if unrecognized_cols:
-                return {
-                    "error": f"Generated query references unavailable columns: {', '.join(set(unrecognized_cols))}. "
-                             f"These columns do not exist in your dataset. "
-                             f"Available columns: {', '.join(sorted(available_columns))}"
+                             "Please check that the information you're asking about exists in your dataset. "
+                             "Available columns: actual, created_at, dlr_nb, drv_trn_cd, forecast, full_mdl_yr_3_cd, mdl_ln_cd, reason, run_id, thin_history, trm_cd"
                 }
             
             # Step 3: Execute query

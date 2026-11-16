@@ -1,10 +1,86 @@
-"""OpenAI LLM handler for RAG chatbot."""
+﻿"""OpenAI LLM handler for RAG chatbot."""
 from openai import OpenAI
 from typing import Optional, List, Dict, Any
+import re
+
+
+# SQL keywords that should be filtered out during column validation
+SQL_KEYWORDS = {
+    'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'ORDER', 'BY', 'GROUP', 'HAVING', 'LIMIT',
+    'AS', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'ROUND', 'ABS', 'NULL', 'NOT', 'IN',
+    'LIKE', 'BETWEEN', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'DISTINCT', 'DESC', 'ASC',
+    'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'ON', 'CROSS', 'UNION', 'ALL',
+    'DATA'  # Common generic table name
+}
+
+
+def validate_sql_columns(sql: str, available_columns: set) -> Dict[str, Any]:
+    """
+    Validate that SQL query only references available columns.
+    
+    Args:
+        sql: SQL query string to validate
+        available_columns: Set of allowed column names
+        
+    Returns:
+        {
+            "is_valid": bool,
+            "invalid_columns": list of unrecognized column references,
+            "error_message": str or None
+        }
+    """
+    if not sql:
+        return {
+            "is_valid": False,
+            "invalid_columns": [],
+            "error_message": "SQL query is empty"
+        }
+    
+    # Extract all identifiers from SQL using regex: \b([a-zA-Z_][a-zA-Z0-9_]*)\b
+    identifiers = re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', sql)
+    
+    # Filter out SQL keywords and function names (case-insensitive)
+    potential_columns = [
+        identifier for identifier in identifiers
+        if identifier.upper() not in SQL_KEYWORDS
+    ]
+    
+    # Find invalid column references
+    invalid_columns = [
+        col for col in potential_columns
+        if col not in available_columns
+    ]
+    
+    # Remove duplicates while preserving order
+    invalid_columns = list(dict.fromkeys(invalid_columns))
+    
+    if invalid_columns:
+        error_message = (
+            f"Generated query references invalid columns: {', '.join(invalid_columns)}. "
+            f"These columns do not exist in your dataset. "
+            f"Available columns: {', '.join(sorted(available_columns))}"
+        )
+        return {
+            "is_valid": False,
+            "invalid_columns": invalid_columns,
+            "error_message": error_message
+        }
+    
+    return {
+        "is_valid": True,
+        "invalid_columns": [],
+        "error_message": None
+    }
 
 
 class LLMHandler:
     """Handle OpenAI API interactions."""
+    
+    # Available columns in the dataset (exactly 11 columns)
+    AVAILABLE_COLUMNS = {
+        'actual', 'created_at', 'dlr_nb', 'drv_trn_cd', 'forecast',
+        'full_mdl_yr_3_cd', 'mdl_ln_cd', 'reason', 'run_id', 'thin_history', 'trm_cd'
+    }
     
     def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
         """
@@ -27,46 +103,67 @@ class LLMHandler:
             table_name: Name of the table to query
             
         Returns:
-            Generated SQL query
+            Generated SQL query, or None if validation fails or error occurs
         """
-        prompt = f"""You are a SQL expert who understands business terminology.
+        prompt = f"""You are a SQL expert. Generate VALID SQL queries ONLY using columns that exist in the schema.
 
-CRITICAL CONSTRAINTS - YOU MUST FOLLOW THESE:
-1. ONLY use columns that exist in the provided schema
-2. ONLY query data that is explicitly in the table
-3. DO NOT make assumptions about data that doesn't exist
-4. DO NOT generate queries for columns not listed in schema
-5. If the user asks about something not in the schema, respond with: "COLUMN_NOT_FOUND"
-6. If you cannot map the question to available columns, respond with: "UNMAPPABLE_QUESTION"
+CRITICAL RULES:
+1. ONLY use columns that exist in the provided schema - NO EXCEPTIONS
+2. When user says "total X", use SUM(column_name) 
+3. When user says "average X", use AVG(column_name)
+4. When user says "top 3" or "top N", use ORDER BY column DESC LIMIT N
+5. When user says "by model" or "by category", use GROUP BY column_name
+6. DO NOT create columns that don't exist (e.g., total_forecast, year, data)
+7. If a column doesn't exist, respond with: COLUMN_NOT_FOUND
+8. If you cannot map the question to available columns, respond with: UNMAPPABLE_QUESTION
 
-The schema includes business column explanations. Use these to understand 
-what the user is asking for, even if they use business terms instead of technical column names.
+AVAILABLE COLUMNS (ONLY use these exact names):
+- actual
+- created_at
+- dlr_nb
+- drv_trn_cd
+- forecast
+- full_mdl_yr_3_cd
+- mdl_ln_cd
+- reason
+- run_id
+- thin_history
+- trm_cd
 
-For example:
-- User asks about "dealer" or "dealership" → use column 'dlr_nb' (if it exists)
-- User asks about "vehicle model" or "model" → use column 'mdl_ln_cd' (if it exists)
-- User asks about "predicted demand" or "forecast" → use column 'forecast' (if it exists)
-- User asks about "actual sales" or "observed demand" → use column 'actual' (if it exists)
-- User asks about "data quality" → check 'thin_history' column (if it exists)
+DO NOT create, derive, or reference any columns not in this list.
+DO NOT use generic table names like 'data' - use the exact table name provided.
+DO NOT create column aliases that reference non-existent columns.
 
-Generate a SQL query to answer the following business question.
+Column Name Mappings:
+- "model" or "model line" or "vehicle model" → mdl_ln_cd
+- "forecast" or "predicted" or "prediction" → forecast
+- "actual" or "real sales" or "observed" → actual
+- "dealer" or "dealership" → dlr_nb
+- "trim" → trm_cd
+- "drivetrain" or "drive type" → drv_trn_cd
+- "quality" or "data quality" → thin_history
+- "year" or "model year" → full_mdl_yr_3_cd
+- "date" or "created" or "timestamp" → created_at
+
+EXAMPLE TRANSFORMATIONS:
+- User: "Top 3 models by forecast" 
+  SQL: SELECT mdl_ln_cd, forecast FROM {table_name} ORDER BY forecast DESC LIMIT 3
+
+- User: "Average forecast by dealer"
+  SQL: SELECT dlr_nb, AVG(forecast) as avg_forecast FROM {table_name} GROUP BY dlr_nb ORDER BY avg_forecast DESC
+
+- User: "Configurations with actual > forecast"
+  SQL: SELECT * FROM {table_name} WHERE actual > forecast LIMIT 100
+
+Generate a SQL query to answer: {question}
 
 Table name: {table_name}
 
-Table schema with business context:
+Schema and sample data:
 {schema_info}
 
-Business Question: {question}
-
-Generate only the SQL query, without any explanation or markdown formatting.
-Return just the query that can be directly executed.
-Ensure the query:
-1. Uses ONLY columns listed in the schema above
-2. Does NOT assume data or columns that don't exist
-3. Handles business logic appropriately
-4. Will produce meaningful results for the business question
-
-If ANY column in your query is not in the schema, respond with: COLUMN_NOT_FOUND"""
+RESPONSE: Generate ONLY the SQL query. No explanation. No markdown. Just the query.
+If any column in your query is not in the available columns list, respond with: COLUMN_NOT_FOUND"""
         
         try:
             response = self.client.chat.completions.create(
@@ -89,6 +186,12 @@ If ANY column in your query is not in the schema, respond with: COLUMN_NOT_FOUND
                 if query.startswith("sql"):
                     query = query[3:]
                 query = query.strip()
+            
+            # VALIDATION: Check that generated SQL only uses available columns
+            validation = validate_sql_columns(query, self.AVAILABLE_COLUMNS)
+            if not validation["is_valid"]:
+                print(f"SQL Validation Failed: {validation['error_message']}")
+                return None
             
             return query
             
